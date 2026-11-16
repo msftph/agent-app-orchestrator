@@ -256,11 +256,11 @@ def load_records(root):
     if not re.fullmatch("[0-9a-f]{40}", policy["source_revision"]):
         raise QualityError("Policy must name its immutable source revision")
     tools = ("ruff", "mypy", "import-linter", "grimp")
-    if isinstance(policy["toolchain"], dict) and "types-jsonschema" in policy["toolchain"]:
-        tools = (*tools, "types-jsonschema")
+    if isinstance(policy["toolchain"], dict):
+        tools = (*tools, *(name for name in ("types-jsonschema", "types-grpcio") if name in policy["toolchain"]))
     exact_keys(policy["toolchain"], tools, "toolchain")
     if any(not isinstance(pin, str) or not re.fullmatch(
-            r"\d+\.\d+\.\d+\.\d{8}" if name == "types-jsonschema" else r"\d+(?:\.\d+){1,3}", pin)
+            r"\d+\.\d+\.\d+\.\d{8}" if name in ("types-jsonschema", "types-grpcio") else r"\d+(?:\.\d+){1,3}", pin)
            for name, pin in policy["toolchain"].items()):
         raise QualityError("Toolchain versions must be exact numeric pins")
     requirements = {

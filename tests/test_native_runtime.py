@@ -227,9 +227,15 @@ async def test_scoped_selectors_refresh_snapshot_and_secrets():
 
 
 def test_snapshot_does_not_contain_credential_values():
-    snapshot = FunctionalSnapshot.capture({**BASE, "MCP_API_KEY": "synthetic-secret"})
+    snapshot = FunctionalSnapshot.capture({
+        **BASE, "MCP_API_KEY": "synthetic-secret",
+        "AG_UI_AUTH_AUDIENCE": "api://current-admission",
+        "AG_UI_ALLOWED_CALLER_IDS": "current-workload",
+    })
     assert "synthetic-secret" not in snapshot.model_dump_json()
     assert "ORCHESTRATION_HOST" not in snapshot.values
+    assert "AG_UI_AUTH_AUDIENCE" not in snapshot.values
+    assert "AG_UI_ALLOWED_CALLER_IDS" not in snapshot.values
 
 
 async def test_only_enabled_consumers_select_their_secrets_and_snapshot_keeps_them_current():

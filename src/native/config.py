@@ -24,8 +24,10 @@ BASE_KEYS = (
     "AZURE_LOG_LEVEL", "AZURE_HTTP_LOG_LEVEL", "AZURE_MONITOR_DISABLE_LOGGING",
     "RETRIEVAL_AUTH_MODE", "ALLOW_ANONYMOUS", "HOSTED_AGENT_AUTH_MODE",
     "AGENT_PRESENTATION_SETTINGS",
+    "AG_UI_ENABLED",
 )
 TOOL_KEYS = {
+    "AG_UI_ENABLED": ("AG_UI_AUTH_AUDIENCE", "AG_UI_ALLOWED_CALLER_IDS"),
     "SEARCH_RETRIEVAL_ENABLED": (
         "SEARCH_CONNECTION_ID", "SEARCH_RAG_INDEX_NAME", "SEARCH_RAGINDEX_TOP_K",
     ),
@@ -50,7 +52,7 @@ TOOL_KEYS = {
 SECRET_KEYS = frozenset({"MCP_API_KEY", "AUDIT_HMAC_KEY"})
 AUTHORIZATION_KEYS = frozenset({
     "RETRIEVAL_AUTH_MODE", "ALLOW_ANONYMOUS", "HOSTED_AGENT_AUTH_MODE",
-    "TOOLBOX_ENDPOINT",
+    "TOOLBOX_ENDPOINT", "AG_UI_AUTH_AUDIENCE", "AG_UI_ALLOWED_CALLER_IDS",
 })
 _DYNAMIC_MCP_KEYS = frozenset({"MCP_ENABLED", *TOOL_KEYS["MCP_ENABLED"]})
 _scoped_config: ContextVar["ConfigView | None"] = ContextVar("native_config", default=None)
@@ -82,6 +84,7 @@ class RuntimeSettings(BaseModel):
     model: str
     auth_mode: Literal["user_delegated", "service_identity"] = "user_delegated"
     toolbox_endpoint: str | None = None
+    ag_ui_enabled: bool = False
 
     @classmethod
     def read(cls, values: Mapping[str, Any], env: Mapping[str, str] | None = None) -> "RuntimeSettings":
@@ -106,7 +109,14 @@ class RuntimeSettings(BaseModel):
             model=str(values.get("CHAT_DEPLOYMENT_NAME") or ""),
             auth_mode=structural["HOSTED_AGENT_AUTH_MODE"] or "user_delegated",
             toolbox_endpoint=values.get("TOOLBOX_ENDPOINT") if enabled(values.get("FOUNDRY_IQ_ENABLED", False)) else None,
+            ag_ui_enabled=enabled(env.get("AG_UI_ENABLED", values.get("AG_UI_ENABLED", False))),
         )
+        if "AG_UI_ENABLED" in env and "AG_UI_ENABLED" in values and (
+            enabled(env["AG_UI_ENABLED"]) != enabled(values["AG_UI_ENABLED"])
+        ):
+            raise ValueError("Contradictory AG_UI_ENABLED; update the publication configuration.")
+        if result.ag_ui_enabled and result.host != "container_apps":
+            raise ValueError("AG_UI_ENABLED requires ORCHESTRATION_HOST=container_apps.")
         if not result.model:
             raise ValueError("CHAT_DEPLOYMENT_NAME is required.")
         if enabled(values.get("FOUNDRY_IQ_ENABLED", False)) and (

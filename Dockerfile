@@ -14,6 +14,7 @@ COPY VERSION ./
 
 FROM runtime-base AS container_apps
 RUN pip install -r requirements-container-apps.txt && pip check
+EXPOSE 8080
 CMD ["python", "-m", "native.durable"]
 
 # Default build remains the Foundry image; select --target container_apps for DTS.

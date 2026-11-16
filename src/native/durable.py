@@ -64,9 +64,37 @@ def build_worker(config: NativeConfig, worker: Any) -> DurableAIAgentWorker:
     runtime = DurableAIAgentWorker(worker, deployment_mode="isolated_v2", process_legacy_entities=False)
     if config.settings.mode in ("conversational", "both"):
         runtime.add_agent(create_agent(config), entity_id=AGENT_NAME)
+        if config.settings.ag_ui_enabled:
+            from .ag_ui_durable import ag_ui_conversation_turn
+            worker.add_orchestrator(ag_ui_conversation_turn)
     if config.settings.mode in ("workflow", "both"):
         runtime.configure_workflow(build_workflow(config, agent_factory(config)))
     return runtime
+
+
+def serve_gateway(config: NativeConfig, binding: dict[str, str], credential: Any) -> None:
+    import uvicorn
+    from api.ag_ui import create_app
+    from api.ag_ui_auth import CallerAuthorizer
+    from .ag_ui_durable import DurableGateway, GatewayRpcDeadline, GatewaySchedulerClient
+
+    if config.settings is None or not config.settings.ag_ui_enabled:
+        raise ValueError("The AG-UI gateway requires explicit activation.")
+    view = asyncio.run(config.view())
+    authorizer = CallerAuthorizer(
+        os.environ.get("AZURE_TENANT_ID", ""),
+        view.get("AG_UI_AUTH_AUDIENCE", ""),
+        view.get("AG_UI_ALLOWED_CALLER_IDS", ""),
+    )
+    client = GatewaySchedulerClient(
+        host_address=urlsplit(binding["host_address"]).netloc, taskhub=binding["taskhub"],
+        token_credential=credential, secure_channel=True, interceptors=[GatewayRpcDeadline()],
+    )
+    try:
+        app = create_app(DurableGateway(client, mode=config.settings.mode), authorizer)
+        uvicorn.run(app, host="0.0.0.0", port=8080, access_log=False)
+    finally:
+        client.close()
 
 
 def main() -> None:
@@ -92,7 +120,10 @@ def main() -> None:
                 token_credential=scheduler_credential, secure_channel=True,
             ))
             runtime.start()
-            stopped.wait()
+            if config.settings is not None and config.settings.ag_ui_enabled:
+                serve_gateway(config, binding, scheduler_credential)
+            else:
+                stopped.wait()
         finally:
             if runtime is not None:
                 runtime.stop()

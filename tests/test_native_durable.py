@@ -55,7 +55,8 @@ def test_worker_uses_provisioned_binding_and_identity_only():
 
 
 @pytest.mark.parametrize("authentication", ["ManagedIdentity", "DefaultAzure"])
-def test_worker_entrypoint_honors_explicit_identity_with_real_sdk_constructor(monkeypatch, authentication):
+@pytest.mark.parametrize("ag_ui", [False, True])
+def test_worker_entrypoint_honors_explicit_identity_with_real_sdk_constructor(monkeypatch, authentication, ag_ui):
     from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
     from native import durable
 
@@ -66,6 +67,7 @@ def test_worker_entrypoint_honors_explicit_identity_with_real_sdk_constructor(mo
     client_id = "11111111-1111-4111-8111-111111111111"
     monkeypatch.setenv("AZURE_CLIENT_ID", client_id)
     config = MagicMock(open=AsyncMock(), close=AsyncMock(), view=AsyncMock())
+    config.settings = SimpleNamespace(ag_ui_enabled=ag_ui)
     monkeypatch.setattr(durable, "NativeConfig", lambda *_: config)
     monkeypatch.setattr(durable, "configure_worker_telemetry", lambda *_: None)
     # Only replace the product's event factory, not threading used by the SDK.
@@ -100,6 +102,8 @@ def test_worker_entrypoint_honors_explicit_identity_with_real_sdk_constructor(mo
     monkeypatch.setattr(durable, "ManagedIdentityCredential", managed_credential)
     monkeypatch.setattr(durable, "DurableTaskSchedulerWorker", scheduler_worker)
     monkeypatch.setattr(durable, "build_worker", register)
+    gateway = MagicMock()
+    monkeypatch.setattr(durable, "serve_gateway", gateway)
     durable.main()
 
     assert credential_options == ([{"client_id": client_id}] if authentication == "ManagedIdentity" else [])
@@ -111,6 +115,14 @@ def test_worker_entrypoint_honors_explicit_identity_with_real_sdk_constructor(mo
     runtime.stop.assert_called_once_with()
     config.open.assert_awaited_once_with()
     config.close.assert_awaited_once_with()
+    if ag_ui:
+        gateway.assert_called_once_with(
+            config,
+            {"host_address": "https://scheduler.example.invalid", "taskhub": "synthetic"},
+            worker_credentials[0],
+        )
+    else:
+        gateway.assert_not_called()
 
 
 @pytest.mark.parametrize("binding", [

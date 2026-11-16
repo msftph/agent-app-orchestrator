@@ -22,16 +22,20 @@ REPLACED_EXCEPTION_RECORDS = {REPLACED_SQL_RECORD, "appconfig-provider-availabil
 
 
 @pytest.mark.parametrize("pin,mutation,accepted", [
-    ("4.26.0.20261006", None, True),
+    ("valid", None, True),
     (None, None, True),
     (">=4.23.0,<5", None, False),
     ("latest", None, False),
     ("4.26.0", None, False),
-    ("4.26.0.20261006", "unknown-tool", False),
-    ("4.26.0.20261006", "missing-core-tool", False),
-    ("4.26.0.20261006", "requirements-disagree", False),
+    ("valid", "unknown-tool", False),
+    ("valid", "missing-core-tool", False),
+    ("valid", "requirements-disagree", False),
 ])
-def test_schema_type_stubs_require_exact_pin(tmp_path, pin, mutation, accepted):
+@pytest.mark.parametrize("package,valid_pin", [
+    ("types-jsonschema", "4.26.0.20261006"), ("types-grpcio", "1.84.0.20261021"),
+])
+def test_schema_type_stubs_require_exact_pin(tmp_path, pin, mutation, accepted, package, valid_pin):
+    pin = valid_pin if pin == "valid" else pin
     root = Path(QUALITY["__file__"]).resolve().parents[2]
     target = tmp_path / ".quality"
     target.mkdir()
@@ -39,9 +43,9 @@ def test_schema_type_stubs_require_exact_pin(tmp_path, pin, mutation, accepted):
         (target / path.name).write_bytes(path.read_bytes())
     policy_path = target / "policy.json"
     policy = json.loads(policy_path.read_text())
-    policy["toolchain"].pop("types-jsonschema", None)
+    policy["toolchain"].pop(package, None)
     if pin is not None:
-        policy["toolchain"]["types-jsonschema"] = pin
+        policy["toolchain"][package] = pin
     if mutation == "unknown-tool":
         policy["toolchain"]["unapproved-tool"] = "1.0.0"
     elif mutation == "missing-core-tool":
@@ -50,15 +54,15 @@ def test_schema_type_stubs_require_exact_pin(tmp_path, pin, mutation, accepted):
     requirements = (root / "requirements-quality.txt").read_text()
     requirements = "\n".join(
         line for line in requirements.splitlines()
-        if not line.startswith("types-jsonschema")
+        if not line.startswith(package)
     )
     if pin is not None:
         requirement_pin = "4.26.0.20261005" if mutation == "requirements-disagree" else pin
-        requirements += f"\ntypes-jsonschema=={requirement_pin}"
+        requirements += f"\n{package}=={requirement_pin}"
     (tmp_path / "requirements-quality.txt").write_text(requirements + "\n")
     if accepted:
         result = QUALITY["load_records"](tmp_path)
-        assert result["policy.json"]["toolchain"].get("types-jsonschema") == pin
+        assert result["policy.json"]["toolchain"].get(package) == pin
     else:
         with pytest.raises(QUALITY["QualityError"]):
             QUALITY["load_records"](tmp_path)

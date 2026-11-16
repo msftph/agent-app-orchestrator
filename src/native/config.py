@@ -52,7 +52,7 @@ TOOL_KEYS = {
 SECRET_KEYS = frozenset({"MCP_API_KEY", "AUDIT_HMAC_KEY"})
 AUTHORIZATION_KEYS = frozenset({
     "RETRIEVAL_AUTH_MODE", "ALLOW_ANONYMOUS", "HOSTED_AGENT_AUTH_MODE",
-    "TOOLBOX_ENDPOINT",
+    "TOOLBOX_ENDPOINT", "AG_UI_AUTH_AUDIENCE", "AG_UI_ALLOWED_CALLER_IDS",
 })
 _DYNAMIC_MCP_KEYS = frozenset({"MCP_ENABLED", *TOOL_KEYS["MCP_ENABLED"]})
 _scoped_config: ContextVar["ConfigView | None"] = ContextVar("native_config", default=None)
